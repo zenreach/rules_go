@@ -8,6 +8,7 @@ Contents
 
 .. Child list start
 
+* `Basic go_library functionality <go_library/README.rst>`_
 * `Cross compilation <cross/README.rst>`_
 * `Basic go_proto_library functionality <go_proto_library/README.rst>`_
 * `Import maps <importmap/README.rst>`_
