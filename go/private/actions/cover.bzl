@@ -39,7 +39,14 @@ def emit_cover(go, source):
     out = go.declare_file(go, path=cover_var, ext='.cover.go')
     covered.append(out)
     args = go.args(go)
-    args.add(["--", "--mode=set", "-var=%s" % cover_var, "-o", out, src])
+    args.add([
+      "-o=" + out.path,
+      "-var=" + cover_var,
+      "-src=" + src.path,
+      "-importpath=" + source.library.importpath,
+      "--",
+      "-mode=set",
+    ])
     go.actions.run(
         inputs = [src] + go.stdlib.files,
         outputs = [out],
@@ -50,4 +57,5 @@ def emit_cover(go, source):
     )
   members = structs.to_dict(source)
   members["srcs"] = covered
+  # cover_vars is dead in this version, but left here for compatibility.
   return GoSource(**members), cover_vars

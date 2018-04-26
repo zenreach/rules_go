@@ -53,6 +53,8 @@ def emit_archive(go, source=None):
   for a in direct:
     runfiles = runfiles.merge(a.runfiles)
     if a.source.mode != go.mode: fail("Archive mode does not match {} is {} expected {}".format(a.data.label, mode_string(a.source.mode), mode_string(go.mode)))
+  if go.cover:
+    direct.append(go.coverdata)
 
   if len(extra_objects) == 0 and source.cgo_archive == None:
     go.compile(go,
@@ -104,6 +106,7 @@ def emit_archive(go, source=None):
       x_defs = x_defs,
       cgo_deps = sets.union(source.cgo_deps, *[a.cgo_deps for a in direct]),
       cgo_exports = sets.union(source.cgo_exports, *[a.cgo_exports for a in direct]),
+      # cover_vars is dead in this version, but left here for compatibility.
       cover_vars = sets.union(cover_vars, *[a.cover_vars for a in direct]),
       runfiles = runfiles,
   )
