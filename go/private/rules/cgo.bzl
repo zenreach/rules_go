@@ -112,6 +112,7 @@ def _cgo_codegen_impl(ctx):
 
   c_outs = [cgo_export_h, cgo_export_c]
   transformed_go_outs = []
+  transformed_go_map = {}
   gen_go_outs = [cgo_types]
 
   source = split_srcs(ctx.files.srcs)
@@ -123,12 +124,14 @@ def _cgo_codegen_impl(ctx):
     gen_go_file = go.declare_file(go, path=mangled_stem + ".cgo1."+src_ext)
     gen_c_file = go.declare_file(go, path=mangled_stem + ".cgo2.c")
     transformed_go_outs.append(gen_go_file)
+    transformed_go_map[gen_go_file] = src
     c_outs.append(gen_c_file)
     args.add(["-src", gen_go_file.path + "=" + src.path])
   for src in source.asm:
     mangled_stem, src_ext = _mangle(src, stems)
     gen_file = go.declare_file(go, path=mangled_stem + ".cgo1."+src_ext)
     transformed_go_outs.append(gen_file)
+    transformed_go_map[gen_go_file] = src
     args.add(["-src", gen_file.path + "=" + src.path])
   for src in source.c:
     mangled_stem, src_ext = _mangle(src, stems)
@@ -175,6 +178,7 @@ def _cgo_codegen_impl(ctx):
   return [
       _CgoCodegen(
           transformed_go = transformed_go_outs,
+          transformed_go_map = transformed_go_map,
           gen_go = gen_go_outs,
           deps = as_list(deps),
           exports = [cgo_export_h],
@@ -256,14 +260,18 @@ def _cgo_resolve_source(go, attr, source, merge):
   cgo_info = library.cgo_info
   
   source["orig_srcs"] = cgo_info.orig_srcs
+  source["orig_src_map"] = cgo_info.transformed_go_map
   source["runfiles"] = cgo_info.runfiles
+  source["cover"] = []
   if source["mode"].pure:
     split = split_srcs(cgo_info.orig_srcs)
     source["srcs"] = split.go + split.asm
-    source["cover"] = source["srcs"]
+    if go.coverage_instrumented:
+      source["cover"] = source["srcs"]
   else:
     source["srcs"] = cgo_info.transformed_go_srcs + cgo_info.gen_go_srcs
-    source["cover"] = cgo_info.transformed_go_srcs
+    if go.coverage_instrumented:
+      source["cover"] = cgo_info.transformed_go_srcs
     source["cgo_deps"] = cgo_info.cgo_deps
     source["cgo_exports"] = cgo_info.cgo_exports
     source["cgo_archive"] = cgo_info.cgo_archive
@@ -280,6 +288,7 @@ def _cgo_collect_info_impl(ctx):
       cgo_info = struct(
           orig_srcs = ctx.files.srcs,
           transformed_go_srcs = codegen.transformed_go,
+          transformed_go_map = codegen.transformed_go_map,
           gen_go_srcs = codegen.gen_go + import_files,
           cgo_deps = codegen.deps,
           cgo_exports = codegen.exports,

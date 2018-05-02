@@ -31,24 +31,31 @@ def emit_cover(go, source):
 
   covered = []
   cover_vars = []
+  covered_src_map = dict(source.orig_src_map)
   for src in source.srcs:
     if not src.basename.endswith(".go") or src not in source.cover:
       covered.append(src)
       continue
+    orig = covered_src_map.get(src, src)
+    _, pkgpath = effective_importpath_pkgpath(source.library)
+    srcname = pkgpath + "/" + orig.basename if pkgpath else orig.path
+
     cover_var = "Cover_" + src.basename[:-3].replace("-", "_").replace(".", "_")
     cover_vars.append("{}={}={}".format(cover_var, src.short_path, source.library.importpath))
     out = go.declare_file(go, path=cover_var, ext='.cover.go')
+    covered_src_map.pop(src, None)
+    covered_src_map[out] = orig
     covered.append(out)
+
     args = go.args(go)
     args.add([
       "-o=" + out.path,
       "-var=" + cover_var,
       "-src=" + src.path,
+      "-srcname=" + srcname,
+      "--",
+      "-mode=set",
     ])
-    _, pkgpath = effective_importpath_pkgpath(source.library)
-    if pkgpath != "":
-      args.add("-srcname=" + pkgpath + "/" + src.basename)
-    args.add(["--", "-mode=set"])
     go.actions.run(
         inputs = [src] + go.stdlib.files,
         outputs = [out],
@@ -59,5 +66,6 @@ def emit_cover(go, source):
     )
   members = structs.to_dict(source)
   members["srcs"] = covered
+  members["orig_src_map"] = covered_src_map
   # cover_vars is dead in this version, but left here for compatibility.
   return GoSource(**members), cover_vars

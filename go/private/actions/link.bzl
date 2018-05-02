@@ -43,11 +43,12 @@ def emit_link(go,
 
   ld = None
   extldflags = []
+  if go.coverage_enabled:
+    extldflags.append("--coverage")
   if go.cgo_tools:
     ld = go.cgo_tools.compiler_executable
     extldflags.extend(go.cgo_tools.options)
   extldflags.extend(["-Wl,-rpath,$ORIGIN/" + ("../" * pkg_depth)])
-
   gc_linkopts, extldflags = _extract_extldflags(gc_linkopts, extldflags)
 
   args = go.args(go)
