@@ -274,6 +274,7 @@ _cgo_codegen = go_rule(
         "cxxopts": attr.string_list(),
         "cppopts": attr.string_list(),
         "linkopts": attr.string_list(),
+        "pure": attr.string(default = "off"),
     },
 )
 
