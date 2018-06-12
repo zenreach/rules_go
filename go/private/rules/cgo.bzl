@@ -89,7 +89,7 @@ def _select_archive(files):
   # list of file extensions in descending order or preference.
   exts = [".pic.lo", ".lo", ".a"]
   for ext in exts:
-    for f in files:
+    for f in as_iterable(files):
       if f.basename.endswith(ext):
         return f
 
@@ -404,9 +404,10 @@ def setup_cgo_library(name, srcs, cdeps, copts, cxxopts, cppopts, clinkopts, obj
 
   # Run cgo on the filtered Go files. This will split them into pure Go files
   # and pure C files, plus a few other glue files.
+  repo_name = native.repository_name()
   base_dir = pkg_dir(
-      "external/" + REPOSITORY_NAME[1:] if len(REPOSITORY_NAME) > 1 else "",
-      PACKAGE_NAME)
+      "external/" + repo_name[1:] if len(repo_name) > 1 else "",
+      native.package_name())
   copts = copts
   cxxopts = cxxopts
   cppopts = cppopts + ["-I", base_dir]

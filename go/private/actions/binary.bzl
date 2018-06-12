@@ -53,7 +53,7 @@ def emit_binary(go,
       version_file=version_file,
       info_file=info_file,
   )
-  cgo_dynamic_deps = [d for d in archive.cgo_deps
+  cgo_dynamic_deps = [d for d in archive.cgo_deps.to_list()
                       if any([d.basename.endswith(ext) for ext in SHARED_LIB_EXTENSIONS])]
   runfiles = go._ctx.runfiles(files = cgo_dynamic_deps).merge(archive.runfiles)
 
