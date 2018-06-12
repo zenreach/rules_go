@@ -136,12 +136,13 @@ def emit_link(go,
 def _bootstrap_link(go, archive, executable, gc_linkopts):
   """See go/toolchains.rst#link for full documentation."""
 
-  inputs = depset([archive.data.file])
+  inputs = [archive.data.file] + go.sdk_files + go.sdk_tools
+
   args = ["tool", "link", "-s", "-o", executable.path]
   args.extend(gc_linkopts)
   args.append(archive.data.file.path)
   go.actions.run_shell(
-      inputs = inputs + go.sdk_files + go.sdk_tools,
+      inputs = inputs,
       outputs = [executable],
       mnemonic = "GoLink",
       command = "export GOROOT=$(pwd)/{} && export GOROOT_FINAL=GOROOT && {} {}".format(go.root, go.go.path, " ".join(args)),
