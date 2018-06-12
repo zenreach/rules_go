@@ -84,26 +84,26 @@ def _new_args(go):
     args.add(["-tags", ",".join(go.tags)])
   return args
 
-def _new_library(go, name=None, importpath=None, resolver=None, importable=True, testfilter=None, **kwargs):
-  if not importpath:
-    importpath = go.importpath
-  importmap = getattr(go._ctx.attr, "importmap", "")
-  if not importmap:
-    importmap = importpath
-  pathtype = go.pathtype
-  if not importable and pathtype == EXPLICIT_PATH:
-    pathtype = EXPORT_PATH
+def _new_library(go, name = None, importpath = None, resolver = None, importable = True, testfilter = None, **kwargs):
+    if not importpath:
+        importpath = go.importpath
+        importmap = go.importmap
+    else:
+        importmap = importpath
+    pathtype = go.pathtype
+    if not importable and pathtype == EXPLICIT_PATH:
+        pathtype = EXPORT_PATH
 
-  return GoLibrary(
-      name = go._ctx.label.name if not name else name,
-      label = go._ctx.label,
-      importpath = importpath,
-      importmap = importmap,
-      pathtype = pathtype,
-      resolve = resolver,
-      testfilter = testfilter,
-      **kwargs
-  )
+    return GoLibrary(
+        name = go._ctx.label.name if not name else name,
+        label = go._ctx.label,
+        importpath = importpath,
+        importmap = importmap,
+        pathtype = pathtype,
+        resolve = resolver,
+        testfilter = testfilter,
+        **kwargs
+    )
 
 def _merge_embed(source, embed):
   s = get_source(embed)
@@ -157,36 +157,39 @@ def _library_to_source(go, attr, library, coverage_instrumented):
   return GoSource(**source)
 
 def _infer_importpath(ctx):
-  DEFAULT_LIB = "go_default_library"
-  VENDOR_PREFIX = "/vendor/"
-  # Check if import path was explicitly set
-  path = getattr(ctx.attr, "importpath", "")
-  # are we in forced infer mode?
-  if path != "":
-    return path, EXPLICIT_PATH
-  # See if we can collect importpath from embeded libraries
-  # This is the path that fixes tests as well
-  for embed in getattr(ctx.attr, "embed", []):
-    if GoLibrary not in embed:
-      continue
-    if embed[GoLibrary].pathtype == EXPLICIT_PATH:
-      return embed[GoLibrary].importpath, EXPLICIT_PATH
-  # TODO: stop using the prefix
-  prefix = getattr(ctx.attr, "_go_prefix", None)
-  path = prefix.go_prefix if prefix else ""
-  # Guess an import path based on the directory structure
-  # This should only really be relied on for binaries
-  if path.endswith("/"):
-    path = path[:-1]
-  if ctx.label.package:
-    path += "/" + ctx.label.package
-  if ctx.label.name != DEFAULT_LIB and not path.endswith(ctx.label.name):
-    path += "/" + ctx.label.name
-  if path.rfind(VENDOR_PREFIX) != -1:
-    path = path[len(VENDOR_PREFIX) + path.rfind(VENDOR_PREFIX):]
-  if path.startswith("/"):
-    path = path[1:]
-  return path, INFERRED_PATH
+    DEFAULT_LIB = "go_default_library"
+    VENDOR_PREFIX = "/vendor/"
+
+    # Check if paths were explicitly set, either in this rule or in an
+    # embedded rule.
+    attr_importpath = getattr(ctx.attr, "importpath", "")
+    attr_importmap = getattr(ctx.attr, "importmap", "")
+    embed_importpath = ""
+    embed_importmap = ""
+    for embed in getattr(ctx.attr, "embed", []):
+        if GoLibrary not in embed:
+            continue
+        lib = embed[GoLibrary]
+        if lib.pathtype == EXPLICIT_PATH:
+            embed_importpath = lib.importpath
+            embed_importmap = lib.importmap
+            break
+
+    importpath = attr_importpath or embed_importpath
+    importmap = attr_importmap or embed_importmap or importpath
+    if importpath:
+        return importpath, importmap, EXPLICIT_PATH
+
+    # Guess an import path based on the directory structure
+    # This should only really be relied on for binaries
+    importpath = ctx.label.package
+    if ctx.label.name != DEFAULT_LIB and not importpath.endswith(ctx.label.name):
+        importpath += "/" + ctx.label.name
+    if importpath.rfind(VENDOR_PREFIX) != -1:
+        importpath = importpath[len(VENDOR_PREFIX) + importpath.rfind(VENDOR_PREFIX):]
+    if importpath.startswith("/"):
+        importpath = importpath[1:]
+    return importpath, importpath, INFERRED_PATH
 
 def _get_go_binary(context_data):
   for f in context_data.sdk_files:
@@ -240,7 +243,7 @@ def go_context(ctx, attr=None):
       "PATH": context_data.cgo_tools.compiler_path,
   })
 
-  importpath, pathtype = _infer_importpath(ctx)
+  importpath, importmap, pathtype = _infer_importpath(ctx)
   return GoContext(
       # Fields
       toolchain = toolchain,
@@ -256,6 +259,7 @@ def go_context(ctx, attr=None):
       crosstool = context_data.crosstool,
       package_list = context_data.package_list,
       importpath = importpath,
+      importmap = importmap,
       pathtype = pathtype,
       cgo_tools = context_data.cgo_tools,
       builders = builders,
