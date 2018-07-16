@@ -140,7 +140,6 @@ func run(args []string) error {
 		for _, a := range archiveFiles {
 			checkerargs = append(checkerargs, "-archivefile", a)
 		}
-		checkerargs = append(checkerargs, "-stdlib", goenv.sdk)
 		checkerargs = append(checkerargs, filenames...)
 		checkerCmd := exec.Command(*checker, checkerargs...)
 		checkerCmd.Stdout, checkerCmd.Stderr = &checkerOutput, &checkerOutput

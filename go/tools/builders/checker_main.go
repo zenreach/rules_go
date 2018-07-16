@@ -46,14 +46,13 @@ func run(args []string) error {
 	archiveFiles := multiFlag{}
 	flags := flag.NewFlagSet("checker", flag.ContinueOnError)
 	flags.Var(&archiveFiles, "archivefile", "Archive file of a direct dependency")
-	stdlib := flags.String("stdlib", "", "Root directory of stdlib")
 	if err := flags.Parse(args); err != nil {
 		log.Println(err)
 		return nil
 	}
-	if *stdlib == "" {
-		log.Printf("missing stdlib root directory")
-		return nil
+	goroot, ok := os.LookupEnv("GOROOT")
+	if !ok {
+		log.Fatalf("GOROOT not set")
 	}
 	importsToArchives := make(map[string]string)
 	for _, a := range archiveFiles {
@@ -68,7 +67,7 @@ func run(args []string) error {
 		fset:              fset,
 		packages:          make(map[string]*types.Package),
 		importsToArchives: importsToArchives,
-		stdlib:            *stdlib,
+		stdlib:            goroot,
 	}
 	apkg, err := load(fset, imp, flags.Args())
 	if err != nil {
