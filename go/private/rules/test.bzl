@@ -15,7 +15,6 @@
 load(
     "@io_bazel_rules_go//go/private:context.bzl",
     "go_context",
-    "EXPORT_PATH",
 )
 load(
     "@io_bazel_rules_go//go/private:common.bzl",
@@ -33,6 +32,7 @@ load(
 )
 load(
     "@io_bazel_rules_go//go/private:providers.bzl",
+    "INFERRED_PATH",
     "GoLibrary",
     "get_archive",
 )
@@ -59,8 +59,6 @@ def _go_test_impl(ctx):
   test into a binary."""
 
   go = go_context(ctx)
-  if ctx.attr.linkstamp:
-    print("DEPRECATED: linkstamp, please use x_def for all stamping now {}".format(ctx.attr.linkstamp))
 
   # Compile the library to test with internal white box tests
   internal_library = go.new_library(go, testfilter="exclude")
@@ -78,7 +76,7 @@ def _go_test_impl(ctx):
       srcs = [struct(files=go_srcs)],
       deps = internal_archive.direct + [internal_archive],
       x_defs = ctx.attr.x_defs,
-  ), external_library, False)
+  ), external_library, ctx.coverage_instrumented())
   external_archive = go.archive(go, external_source)
   external_srcs = split_srcs(external_source.srcs).go
 
@@ -94,7 +92,7 @@ def _go_test_impl(ctx):
   main_go = go.declare_file(go, "testmain.go")
   arguments = go.args(go)
   arguments.add(['-rundir', run_dir, '-output', main_go])
-  if go.cover:
+  if ctx.configuration.coverage_enabled:
     arguments.add(["-coverage"])
   arguments.add([
       # the l is the alias for the package under test, the l_test must be the
@@ -119,11 +117,11 @@ def _go_test_impl(ctx):
       label = go._ctx.label,
       importpath = "testmain",
       importmap = "testmain",
-      pathtype = EXPORT_PATH,
+      pathtype = INFERRED_PATH,
       resolve = None,
   )
   test_deps = external_archive.direct + [external_archive]
-  if go.cover:
+  if ctx.configuration.coverage_enabled:
     test_deps.append(go.coverdata)
   test_source = go.library_to_source(go, struct(
       srcs = [struct(files=[main_go])],
@@ -134,7 +132,6 @@ def _go_test_impl(ctx):
       source = test_source,
       test_archives = [internal_archive.data],
       gc_linkopts = gc_linkopts(ctx),
-      linkstamp=ctx.attr.linkstamp,
       version_file=ctx.version_file,
       info_file=ctx.info_file,
   )
@@ -180,6 +177,7 @@ go_test = go_rule(
             providers = [GoLibrary],
             aspects = [go_archive_aspect],
         ),
+        "importpath": attr.string(),
         "pure": attr.string(
             values = [
                 "on",
@@ -214,7 +212,6 @@ go_test = go_rule(
         ),
         "gc_goopts": attr.string_list(),
         "gc_linkopts": attr.string_list(),
-        "linkstamp": attr.string(),
         "rundir": attr.string(),
         "x_defs": attr.string_dict(),
         "linkmode": attr.string(default=LINKMODE_NORMAL),

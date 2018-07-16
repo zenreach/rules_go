@@ -27,23 +27,21 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strconv"
 )
 
 func run(args []string) error {
 	flags := flag.NewFlagSet("cover", flag.ExitOnError)
-	var coverSrc, coverVar, origSrc, importpath string
+	var coverSrc, coverVar, origSrc, srcName string
 	flags.StringVar(&coverSrc, "o", "", "coverage output file")
 	flags.StringVar(&coverVar, "var", "", "name of cover variable")
 	flags.StringVar(&origSrc, "src", "", "original source file")
-	flags.StringVar(&importpath, "importpath", "", "library import path")
+	flags.StringVar(&srcName, "srcname", "", "source name printed in coverage data")
 	goenv := envFlags(flags)
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	if err := goenv.update(); err != nil {
+	if err := goenv.checkFlags(); err != nil {
 		return err
 	}
 	if coverSrc == "" {
@@ -55,22 +53,15 @@ func run(args []string) error {
 	if origSrc == "" {
 		return fmt.Errorf("-src was not set")
 	}
-	var srcName string
-	if importpath == "" {
+	if srcName == "" {
 		srcName = origSrc
-	} else {
-		srcName = filepath.Join(filepath.FromSlash(importpath), filepath.Base(origSrc))
 	}
 
-	goargs := []string{"tool", "cover", "-var=" + coverVar, "-o=" + coverSrc}
+	goargs := goenv.goTool("cover", "-var", coverVar, "-o", coverSrc)
 	goargs = append(goargs, flags.Args()...)
 	goargs = append(goargs, origSrc)
-	cmd := exec.Command(goenv.Go, goargs...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Env = goenv.Env()
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("error running cover: %v", err)
+	if err := goenv.runCommand(goargs); err != nil {
+		return err
 	}
 
 	return registerCoverage(coverSrc, coverVar, srcName)
@@ -147,6 +138,8 @@ func init() {
 }
 
 func main() {
+	log.SetFlags(0)
+	log.SetPrefix("GoCover: ")
 	if err := run(os.Args[1:]); err != nil {
 		log.Fatal(err)
 	}

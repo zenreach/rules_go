@@ -28,6 +28,7 @@ build --spawn_strategy=standalone
 build --genrule_strategy=standalone
 
 test --test_strategy=standalone
+test --nocache_test_results
 
 build:isolate --
 build:fetch --fetch=True
@@ -37,13 +38,13 @@ build:fetch --fetch=True
 # it contains the calls required to make the go rules work
 _basic_workspace = """
 load("@io_bazel_rules_go//go:def.bzl", "go_rules_dependencies", "go_register_toolchains")
-load("@io_bazel_rules_go//proto:def.bzl", "proto_register_toolchains")
 go_rules_dependencies()
-proto_register_toolchains()
 """
 
-# _bazel_test_script_template is hte template for the bazel invocation script
+# _bazel_test_script_template is the template for the bazel invocation script
 _bazel_test_script_template = """
+set -u
+
 echo running in {work_dir}
 unset TEST_TMPDIR
 RULES_GO_OUTPUT={output}
@@ -61,11 +62,25 @@ cd {work_dir}
 {bazel} --bazelrc {bazelrc} {command} --experimental_repository_cache={cache_dir} --config {config} {args} {target} >& bazel-output.txt
 result=$?
 
+function at_exit {{
+  echo "bazel exited with status $result"
+  echo "----- bazel-output.txt begin -----"
+  cat bazel-output.txt
+  echo "----- bazel-output.txt end -----"
+  for log in {logs}; do
+    if [ ! -e "$log" ]; then
+      echo "----- $log not found -----"
+    else
+      echo "----- $log begin -----"
+      cat "$log"
+      echo "----- $log end -----"
+    fi
+  done
+}}
+trap at_exit EXIT
+
 {check}
 
-if [ "$result" -ne 0 ]; then
-  cat bazel-output.txt
-fi
 exit $result
 """
 
@@ -92,6 +107,12 @@ def _bazel_test_script_impl(ctx):
   go = go_context(ctx)
   script_file = go.declare_file(go, ext=".bash")
 
+  if not ctx.attr.targets:
+    # Skip test when there are no targets. Targets may be platform-specific,
+    # and we may not have any targets on some platforms.
+    ctx.actions.write(script_file, "", is_executable = True)
+    return [DefaultInfo(files = depset([script_file]))]
+
   if ctx.attr.go_version == CURRENT_VERSION:
     register = 'go_register_toolchains()\n'
   elif ctx.attr.go_version != None:
@@ -117,8 +138,14 @@ def _bazel_test_script_impl(ctx):
   build_file = go.declare_file(go, path="BUILD.in")
   ctx.actions.write(build_file, ctx.attr.build)
 
-  targets = ["@" + ctx.workspace_name + "//" + ctx.label.package + t if t.startswith(":") else t for t in ctx.attr.targets]
   output = "external/" + ctx.workspace_name + "/" + ctx.label.package
+  targets = ["@" + ctx.workspace_name + "//" + ctx.label.package + t if t.startswith(":") else t for t in ctx.attr.targets]
+  logs = []
+  if ctx.attr.command in ("test", "coverage"):
+    # TODO(jayconrod): read logs for other packages
+    logs = ["bazel-testlogs/{}/{}/test.log".format(output, t[1:])
+            for t in ctx.attr.targets if t.startswith(":")]
+
   script_content = _bazel_test_script_template.format(
       bazelrc = shell.quote(ctx.attr._settings.exec_root + "/" + ctx.file._bazelrc.path),
       config = ctx.attr.config,
@@ -126,6 +153,7 @@ def _bazel_test_script_impl(ctx):
       command = ctx.attr.command,
       args = " ".join(ctx.attr.args),
       target = " ".join(targets),
+      logs = " ".join(logs),
       check = ctx.attr.check,
       workspace = shell.quote(workspace_file.short_path),
       build = shell.quote(build_file.short_path),

@@ -14,6 +14,9 @@
 
 load(
     "@io_bazel_rules_go//go/private:providers.bzl",
+    "EXPLICIT_PATH",
+    "INFERRED_PATH",
+    "EXPORT_PATH",
     "GoLibrary",
     "GoSource",
     "GoAspectProviders",
@@ -46,12 +49,6 @@ load(
 
 GoContext = provider()
 
-EXPLICIT_PATH = "explicit"
-
-INFERRED_PATH = "inferred"
-
-EXPORT_PATH = "export"
-
 _COMPILER_OPTIONS_BLACKLIST = {
   "-fcolor-diagnostics": None,
   "-Wall": None,
@@ -82,29 +79,9 @@ def _declare_directory(go, path="", ext="", name = ""):
 
 def _new_args(go):
   args = go.actions.args()
-  if go.stdlib:
-    root_file = go.stdlib.root_file
-  else:
-    root_file = go.package_list
-  args.add([
-      "-go", go.go,
-      "-root_file", root_file,
-      "-goos", go.mode.goos,
-      "-goarch", go.mode.goarch,
-      "-cgo=" + ("0" if go.mode.pure else "1"),
-  ])
-  if len(go.tags) > 0:
-    args.add("-tags")
-    args.add(go.tags, join_with = ",")
-  if go.cgo_tools:
-    args.add([
-      "-compiler_path", go.cgo_tools.compiler_path,
-      "-cc", go.cgo_tools.compiler_executable,
-    ])
-    args.add(go.cgo_tools.compiler_options, before_each = "-c_flag")
-    args.add(go.cgo_tools.compiler_options, before_each = "-cxx_flag")
-    args.add(go.cgo_tools.compiler_options, before_each = "-cpp_flag")
-    args.add(go.cgo_tools.linker_options, before_each = "-ld_flag")
+  args.add(["-sdk", go.sdk_root.dirname])
+  if go.tags:
+    args.add(["-tags", ",".join(go.tags)])
   return args
 
 def _new_library(go, name=None, importpath=None, resolver=None, importable=True, testfilter=None, **kwargs):
@@ -113,12 +90,16 @@ def _new_library(go, name=None, importpath=None, resolver=None, importable=True,
   importmap = getattr(go._ctx.attr, "importmap", "")
   if not importmap:
     importmap = importpath
+  pathtype = go.pathtype
+  if not importable and pathtype == EXPLICIT_PATH:
+    pathtype = EXPORT_PATH
+
   return GoLibrary(
       name = go._ctx.label.name if not name else name,
       label = go._ctx.label,
       importpath = importpath,
       importmap = importmap,
-      pathtype = go.pathtype,
+      pathtype = pathtype,
       resolve = resolver,
       testfilter = testfilter,
       **kwargs
@@ -128,6 +109,7 @@ def _merge_embed(source, embed):
   s = get_source(embed)
   source["srcs"] = s.srcs + source["srcs"]
   source["orig_srcs"] = s.orig_srcs + source["orig_srcs"]
+  source["orig_src_map"].update(s.orig_src_map)
   source["cover"] = source["cover"] + s.cover
   source["deps"] = source["deps"] + s.deps
   source["x_defs"].update(s.x_defs)
@@ -150,6 +132,7 @@ def _library_to_source(go, attr, library, coverage_instrumented):
       "mode": go.mode,
       "srcs": srcs,
       "orig_srcs": srcs,
+      "orig_src_map": {},
       "cover" : [],
       "x_defs" : {},
       "deps" : getattr(attr, "deps", []),
@@ -159,7 +142,7 @@ def _library_to_source(go, attr, library, coverage_instrumented):
       "cgo_deps" : [],
       "cgo_exports" : [],
   }
-  if coverage_instrumented and not attr.testonly:
+  if coverage_instrumented and not getattr(attr, "testonly", False):
     source["cover"] = attr_srcs
   for e in getattr(attr, "embed", []):
     _merge_embed(source, e)
@@ -206,7 +189,7 @@ def _infer_importpath(ctx):
   return path, INFERRED_PATH
 
 def _get_go_binary(context_data):
-  for f in context_data.sdk_files:
+  for f in context_data.sdk_tools:
     parent = paths.dirname(f.path)
     sdk = paths.dirname(parent)
     parent = paths.basename(parent)
@@ -216,7 +199,7 @@ def _get_go_binary(context_data):
     name, ext = paths.split_extension(basename)
     if name != "go":
       continue
-    return sdk, f
+    return f
   fail("Could not find go executable in go_sdk")
 
 def go_context(ctx, attr=None):
@@ -236,27 +219,39 @@ def go_context(ctx, attr=None):
   coverdata = getattr(attr, "_coverdata", None)
   if coverdata:
     coverdata = get_archive(coverdata)
-  have_cover = (ctx.configuration.coverage_enabled and
-                bool(toolchain.actions.cover) and bool(coverdata))
 
   host_only = getattr(attr, "_hostonly", False)
 
   context_data = attr._go_context_data
   mode = get_mode(ctx, host_only, toolchain, context_data)
-  root, binary = _get_go_binary(context_data)
+  binary = _get_go_binary(context_data)
 
   stdlib = getattr(attr, "_stdlib", None)
   if stdlib:
     stdlib = get_source(stdlib).stdlib
+    goroot = stdlib.root_file.dirname
+  else:
+    goroot = context_data.sdk_root.dirname
+
+  env = dict(context_data.env)
+  env.update({
+      "GOARCH": mode.goarch,
+      "GOOS": mode.goos,
+      "GOROOT": goroot,
+      "GOROOT_FINAL": "GOROOT",
+      "CGO_ENABLED": "0" if mode.pure else "1",
+      "PATH": context_data.cgo_tools.compiler_path,
+  })
 
   importpath, pathtype = _infer_importpath(ctx)
   return GoContext(
       # Fields
       toolchain = toolchain,
       mode = mode,
-      root = root,
+      root = goroot,
       go = binary,
       stdlib = stdlib,
+      sdk_root = context_data.sdk_root,
       sdk_files = context_data.sdk_files,
       sdk_tools = context_data.sdk_tools,
       actions = ctx.actions,
@@ -269,15 +264,17 @@ def go_context(ctx, attr=None):
       cgo_tools = context_data.cgo_tools,
       builders = builders,
       checker = checker,
-      coverdata = coverdata if have_cover else None,
-      env = context_data.env,
+      coverdata = coverdata,
+      coverage_enabled = ctx.configuration.coverage_enabled,
+      coverage_instrumented = ctx.coverage_instrumented(),
+      env = env,
       tags = context_data.tags,
       # Action generators
       archive = toolchain.actions.archive,
       asm = toolchain.actions.asm,
       binary = toolchain.actions.binary,
       compile = toolchain.actions.compile,
-      cover = toolchain.actions.cover if have_cover else None,
+      cover = toolchain.actions.cover,
       link = toolchain.actions.link,
       pack = toolchain.actions.pack,
 
@@ -312,6 +309,7 @@ def _go_context_data(ctx):
       strip = ctx.attr.strip,
       crosstool = ctx.files._crosstool,
       package_list = ctx.file._package_list,
+      sdk_root = ctx.file._sdk_root,
       sdk_files = ctx.files._sdk_files,
       sdk_tools = ctx.files._sdk_tools,
       tags = tags,
@@ -337,6 +335,10 @@ go_context_data = rule(
             allow_files = True,
             single_file = True,
             default = "@go_sdk//:packages.txt",
+        ),
+        "_sdk_root": attr.label(
+            allow_single_file = True,
+            default = "@go_sdk//:ROOT",
         ),
         "_sdk_files": attr.label(
             allow_files = True,

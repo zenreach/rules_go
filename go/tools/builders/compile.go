@@ -30,32 +30,30 @@ import (
 )
 
 func run(args []string) error {
+	// Parse arguments.
+	builderArgs, toolArgs := splitArgs(args)
+	flags := flag.NewFlagSet("GoCompile", flag.ExitOnError)
 	unfiltered := multiFlag{}
 	deps := multiFlag{}
 	archiveFiles := multiFlag{}
-	search := multiFlag{}
 	importmap := multiFlag{}
-	flags := flag.NewFlagSet("compile", flag.ContinueOnError)
 	goenv := envFlags(flags)
 	flags.Var(&unfiltered, "src", "A source file to be filtered and compiled")
 	flags.Var(&deps, "dep", "Import path of a direct dependency")
-	flags.Var(&search, "I", "Search paths of a direct dependency")
 	flags.Var(&importmap, "importmap", "Import maps of a direct dependency")
 	flags.Var(&archiveFiles, "archivefile", "Archive file of a direct dependency")
 	checker := flags.String("checker", "", "The checker binary")
-	trimpath := flags.String("trimpath", "", "The base of the paths to trim")
 	output := flags.String("o", "", "The output object file to write")
 	packageList := flags.String("package_list", "", "The file containing the list of standard library packages")
 	testfilter := flags.String("testfilter", "off", "Controls test package filtering")
-	// process the args
-	if err := flags.Parse(args); err != nil {
+	if err := flags.Parse(builderArgs); err != nil {
 		return err
 	}
-	if err := goenv.update(); err != nil {
+	if err := goenv.checkFlags(); err != nil {
 		return err
 	}
-	absOutput := abs(*output) // required to work with long paths on Windows
 
+	// Filter sources using build constraints.
 	var matcher func(f *goMetadata) bool
 	switch *testfilter {
 	case "off":
@@ -74,8 +72,7 @@ func run(args []string) error {
 		return fmt.Errorf("Invalid test filter %q", *testfilter)
 	}
 	// apply build constraints to the source list
-	bctx := goenv.BuildContext()
-	all, err := readFiles(bctx, unfiltered)
+	all, err := readFiles(build.Default, unfiltered)
 	if err != nil {
 		return err
 	}
@@ -89,22 +86,16 @@ func run(args []string) error {
 		// We need to run the compiler to create a valid archive, even if there's
 		// nothing in it. GoPack will complain if we try to add assembly or cgo
 		// objects.
-		emptyPath := filepath.Join(abs(*trimpath), "_empty.go")
+		emptyPath := filepath.Join(filepath.Dir(*output), "_empty.go")
 		if err := ioutil.WriteFile(emptyPath, []byte("package empty\n"), 0666); err != nil {
 			return err
 		}
 		files = append(files, &goMetadata{filename: emptyPath})
 	}
 
-	goargs := []string{"tool", "compile"}
-	if goenv.shared {
-		goargs = append(goargs, "-shared")
-	}
-	goargs = append(goargs, "-trimpath", abs(*trimpath))
-	for _, path := range search {
-		goargs = append(goargs, "-I", abs(path))
-	}
+	// Check that the filtered sources don't import anything outside of deps.
 	strictdeps := deps
+	var importmapArgs []string
 	for _, mapping := range importmap {
 		i := strings.Index(mapping, "=")
 		if i < 0 {
@@ -115,29 +106,33 @@ func run(args []string) error {
 		if source == "" || actual == "" || source == actual {
 			continue
 		}
-		goargs = append(goargs, "-importmap", mapping)
+		importmapArgs = append(importmapArgs, "-importmap", mapping)
 		strictdeps = append(strictdeps, source)
 	}
-	goargs = append(goargs, "-pack", "-o", absOutput)
-	goargs = append(goargs, flags.Args()...)
+	if err := checkDirectDeps(build.Default, files, strictdeps, *packageList); err != nil {
+		return err
+	}
+
+	// Compile the filtered files.
+	goargs := goenv.goTool("compile")
+	goargs = append(goargs, importmapArgs...)
+	goargs = append(goargs, "-pack", "-o", *output)
+	goargs = append(goargs, toolArgs...)
+	goargs = append(goargs, "--")
 	filenames := make([]string, 0, len(files))
 	for _, f := range files {
 		filenames = append(filenames, f.filename)
 	}
 	goargs = append(goargs, filenames...)
-
-	// Check that the filtered sources don't import anything outside of deps.
-	if err := checkDirectDeps(bctx, files, strictdeps, *packageList); err != nil {
-		return err
-	}
-
-	cmd := exec.Command(goenv.Go, goargs...)
+	absArgs(goargs, []string{"I", "o", "trimpath"})
+	cmd := exec.Command(goargs[0], goargs[1:]...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Env = goenv.Env()
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("error starting compiler: %v", err)
 	}
+
+	// Run the checker concurrently.
 	var checkerOutput bytes.Buffer
 	checkerFailed := false
 	if *checker != "" {
@@ -145,7 +140,7 @@ func run(args []string) error {
 		for _, a := range archiveFiles {
 			checkerargs = append(checkerargs, "-archivefile", a)
 		}
-		checkerargs = append(checkerargs, "-stdlib", filepath.Dir(goenv.rootFile))
+		checkerargs = append(checkerargs, "-stdlib", goenv.sdk)
 		checkerargs = append(checkerargs, filenames...)
 		checkerCmd := exec.Command(*checker, checkerargs...)
 		checkerCmd.Stdout, checkerCmd.Stderr = &checkerOutput, &checkerOutput

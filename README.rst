@@ -29,7 +29,8 @@ Go rules for Bazel_
 .. _Running Bazel Tests on Travis CI: https://kev.inburke.com/kevin/bazel-tests-on-travis-ci/
 .. _korfuri/bazel-travis Use Bazel with Travis CI: https://github.com/korfuri/bazel-travis
 .. _Travis configuration file: .travis.yml
-.. _roadmap: roadmap.rst
+.. _rules_go and Gazelle roadmap: roadmap.rst
+.. _Deprecation schedule: deprecation.rst
 
 .. ;; And now we continue with the actual content
 
@@ -44,22 +45,28 @@ Mailing list: `bazel-go-discuss`_
 Announcements
 -------------
 
+May 8, 2018
+  Release `0.12.0 <https://github.com/bazelbuild/rules_go/releases/tag/0.12.0>`_
+  is now available.
+April 30, 2018
+  Releases `0.11.1 <https://github.com/bazelbuild/rules_go/releases/tag/0.11.1>`_
+  and `0.10.4 <https://github.com/bazelbuild/rules_go/releases/tag/0.10.4>`_
+  are now available.
+April 23, 2018
+  Some rules will be deprecated or removed in the next release. See
+  `Deprecation schedule`_ for details.
 April 16, 2018
   Release `0.11.0 <https://github.com/bazelbuild/rules_go/releases/tag/0.11.0>`_
   is now available.
-April 4, 2018
-  Release `0.10.3 <https://github.com/bazelbuild/rules_go/releases/tag/0.10.3>`_
-  is now available. Release 0.11.0 is now expected around April 16, but you can
-  try it out on the ``release-0.11`` branch.
-March 29, 2018
-  Release `0.10.2 <https://github.com/bazelbuild/rules_go/releases/tag/0.10.2>`_
-  is now available.
 
-.. contents::
+Contents
+--------
 
+.. contents:: .
+  :depth: 2
 
 Documentation
--------------
+~~~~~~~~~~~~~
 
 * `Core API <go/core.rst>`_
   
@@ -78,6 +85,12 @@ Documentation
 * `Build-time code analysis <go/checks.rst>`_
 * `Deprecated rules <go/deprecated.rst>`_
 * `Build modes <go/modes.rst>`_
+
+Quick links
+~~~~~~~~~~~
+
+* `rules_go and Gazelle roadmap`_
+* `Deprecation schedule`_
 
 Overview
 --------
@@ -100,7 +113,7 @@ They currently do not support (in order of importance):
 * C/C++ interoperation except cgo (swig etc.)
 * coverage
 
-:Note: The latest version of these rules (0.11.0) requires Bazel ≥ 0.10.0 to work.
+:Note: The latest version of these rules (0.12.0) requires Bazel ≥ 0.10.0 to work.
 
 The ``master`` branch is only guaranteed to work with the latest version of Bazel.
 
@@ -118,8 +131,8 @@ Setup
 
     http_archive(
         name = "io_bazel_rules_go",
-        url = "https://github.com/bazelbuild/rules_go/releases/download/0.11.0/rules_go-0.11.0.tar.gz",
-        sha256 = "f70c35a8c779bb92f7521ecb5a1c6604e9c3edd431e50b6376d7497abc8ad3c1",
+        url = "https://github.com/bazelbuild/rules_go/releases/download/0.12.0/rules_go-0.12.0.tar.gz",
+        sha256 = "c1f52b8789218bb1542ed362c4f7de7052abcf254d865d96fb7ba6d44bc15ee3",
     )
     load("@io_bazel_rules_go//go:def.bzl", "go_rules_dependencies", "go_register_toolchains")
     go_rules_dependencies()
@@ -164,13 +177,13 @@ build files automatically using gazelle_.
 
     http_archive(
         name = "io_bazel_rules_go",
-        url = "https://github.com/bazelbuild/rules_go/releases/download/0.11.0/rules_go-0.11.0.tar.gz",
-        sha256 = "f70c35a8c779bb92f7521ecb5a1c6604e9c3edd431e50b6376d7497abc8ad3c1",
+        url = "https://github.com/bazelbuild/rules_go/releases/download/0.12.0/rules_go-0.12.0.tar.gz",
+        sha256 = "c1f52b8789218bb1542ed362c4f7de7052abcf254d865d96fb7ba6d44bc15ee3",
     )
     http_archive(
         name = "bazel_gazelle",
-        url = "https://github.com/bazelbuild/bazel-gazelle/releases/download/0.11.0/bazel-gazelle-0.11.0.tar.gz",
-        sha256 = "92a3c59734dad2ef85dc731dbcb2bc23c4568cded79d4b87ebccd787eb89e8d0",
+        url = "https://github.com/bazelbuild/bazel-gazelle/releases/download/0.12.0/bazel-gazelle-0.12.0.tar.gz",
+        sha256 = "ddedc7aaeb61f2654d7d7d4fd7940052ea992ccdb031b8f9797ed143ac7e8d43",
     )
     load("@io_bazel_rules_go//go:def.bzl", "go_rules_dependencies", "go_register_toolchains")
     go_rules_dependencies()
