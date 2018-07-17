@@ -14,7 +14,7 @@
 
 load(
     "@io_bazel_rules_go//go/private:context.bzl",
-    go_context = "go_context",
+    "go_context",
 )
 load(
     "@io_bazel_rules_go//go/private:go_repository.bzl",
@@ -22,11 +22,11 @@ load(
 )
 load(
     "@io_bazel_rules_go//go/private:providers.bzl",
-    _GoLibrary = "GoLibrary",
-    _GoSource = "GoSource",
-    _GoPath = "GoPath",
     _GoArchive = "GoArchive",
     _GoArchiveData = "GoArchiveData",
+    _GoLibrary = "GoLibrary",
+    _GoPath = "GoPath",
+    _GoSource = "GoSource",
 )
 load(
     "@io_bazel_rules_go//go/private:repositories.bzl",
@@ -38,13 +38,13 @@ load(
 )
 load(
     "@io_bazel_rules_go//go/private:sdk.bzl",
-    go_download_sdk = "go_download_sdk",
-    go_host_sdk = "go_host_sdk",
-    go_local_sdk = "go_local_sdk",
+    "go_download_sdk",
+    "go_host_sdk",
+    "go_local_sdk",
 )
 load(
     "@io_bazel_rules_go//go/private:go_toolchain.bzl",
-    go_toolchain = "go_toolchain",
+    "go_toolchain",
 )
 load(
     "@io_bazel_rules_go//go/private:rules/prefix.bzl",
