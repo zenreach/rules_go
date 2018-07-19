@@ -124,7 +124,7 @@ func run(args []string) error {
 		filenames = append(filenames, f.filename)
 	}
 	goargs = append(goargs, filenames...)
-	absArgs(goargs, []string{"I", "o", "trimpath"})
+	absArgs(goargs, []string{"-I", "-o", "-trimpath"})
 	cmd := exec.Command(goargs[0], goargs[1:]...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

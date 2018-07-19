@@ -16,6 +16,7 @@ load(
     "@io_bazel_rules_go//go/private:mode.bzl",
     "LINKMODE_C_ARCHIVE",
     "LINKMODE_C_SHARED",
+    "LINKMODE_PLUGIN",
 )
 load(
     "@io_bazel_rules_go//go/private:common.bzl",
@@ -45,6 +46,8 @@ def emit_binary(
             extension = go.shared_extension
         elif go.mode.link == LINKMODE_C_ARCHIVE:
             extension = ARCHIVE_EXTENSION
+        elif go.mode.link == LINKMODE_PLUGIN:
+            extension = go.shared_extension
         executable = go.declare_file(go, name = name, ext = extension)
     go.link(
         go,
@@ -57,7 +60,7 @@ def emit_binary(
     )
     cgo_dynamic_deps = [
         d
-        for d in archive.cgo_deps
+        for d in archive.cgo_deps.to_list()
         if any([d.basename.endswith(ext) for ext in SHARED_LIB_EXTENSIONS])
     ]
     runfiles = go._ctx.runfiles(files = cgo_dynamic_deps).merge(archive.runfiles)

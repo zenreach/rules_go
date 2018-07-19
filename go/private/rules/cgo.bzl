@@ -74,6 +74,13 @@ _DEFAULT_PLATFORM_COPTS = select({
     "//conditions:default": ["-pthread"],
 })
 
+_DEFAULT_PLATFORM_LINKOPTS = select({
+    "@io_bazel_rules_go//go/platform:android": ["-llog", "-ldl"],
+    "@io_bazel_rules_go//go/platform:darwin": [],
+    "@io_bazel_rules_go//go/platform:windows_amd64": ["-mthreads"],
+    "//conditions:default": ["-pthread"],
+})
+
 def _c_filter_options(options, blacklist):
     return [
         opt
@@ -92,7 +99,7 @@ def _select_archive(files):
     # list of file extensions in descending order or preference.
     exts = [".pic.lo", ".lo", ".a"]
     for ext in exts:
-        for f in files:
+        for f in as_iterable(files):
             if f.basename.endswith(ext):
                 return f
 
@@ -280,6 +287,7 @@ _cgo_codegen = go_rule(
         "cxxopts": attr.string_list(),
         "cppopts": attr.string_list(),
         "linkopts": attr.string_list(),
+        "pure": attr.string(default = "off"),
     },
 )
 
@@ -414,9 +422,10 @@ def setup_cgo_library(name, srcs, cdeps, copts, cxxopts, cppopts, clinkopts, obj
 
     # Run cgo on the filtered Go files. This will split them into pure Go files
     # and pure C files, plus a few other glue files.
+    repo_name = native.repository_name()
     base_dir = pkg_dir(
-        "external/" + REPOSITORY_NAME[1:] if len(REPOSITORY_NAME) > 1 else "",
-        PACKAGE_NAME,
+        "external/" + repo_name[1:] if len(repo_name) > 1 else "",
+        native.package_name(),
     )
     copts = copts
     cxxopts = cxxopts
@@ -491,7 +500,7 @@ def setup_cgo_library(name, srcs, cdeps, copts, cxxopts, cppopts, clinkopts, obj
     # into binaries that depend on this cgo_library. It will also be used
     # in _cgo_.o.
     platform_copts = _DEFAULT_PLATFORM_COPTS
-    platform_linkopts = platform_copts
+    platform_linkopts = _DEFAULT_PLATFORM_LINKOPTS
 
     cgo_c_lib_name = name + ".cgo_c_lib"
     native.cc_library(
@@ -606,11 +615,16 @@ def go_binary_c_archive_shared(name, kwargs):
     c_hdrs = name + ".c_hdrs"
     cc_import_name = name + ".cc_import"
     cc_library_name = name + ".cc"
+    tags = kwargs.get("tags", ["manual"])
+    if "manual" not in tags:
+        # These archives can't be built on all platforms, so use "manual" tag.s
+        tags.append("manual")
     native.filegroup(
         name = cgo_exports,
         srcs = [name],
         output_group = "cgo_exports",
         visibility = ["//visibility:private"],
+        tags = tags,
     )
     native.genrule(
         name = c_hdrs,
@@ -618,6 +632,7 @@ def go_binary_c_archive_shared(name, kwargs):
         outs = ["%s.h" % name],
         cmd = "cat $(SRCS) > $(@)",
         visibility = ["//visibility:private"],
+        tags = tags,
     )
     cc_import_kwargs = {}
     if linkmode == LINKMODE_C_SHARED:
@@ -628,6 +643,7 @@ def go_binary_c_archive_shared(name, kwargs):
         name = cc_import_name,
         alwayslink = 1,
         visibility = ["//visibility:private"],
+        tags = tags,
         **cc_import_kwargs
     )
     native.cc_library(
@@ -639,4 +655,5 @@ def go_binary_c_archive_shared(name, kwargs):
         copts = _DEFAULT_PLATFORM_COPTS,
         linkopts = _DEFAULT_PLATFORM_COPTS,
         visibility = ["//visibility:public"],
+        tags = tags,
     )

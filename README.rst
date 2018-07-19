@@ -11,7 +11,7 @@ Go rules for Bazel_
 .. _github.com/bazelbuild/bazel-gazelle: https://github.com/bazelbuild/bazel-gazelle
 .. _vendoring: Vendoring.md
 .. _protocol buffers: proto/core.rst
-.. _go_repository: go/workspace.rst#go_repository
+.. _go_repository: https://github.com/bazelbuild/bazel-gazelle/blob/master/repository.rst#go_repository
 .. _go_library: go/core.rst#go_library
 .. _go_binary: go/core.rst#go_binary
 .. _go_test: go/core.rst#go_test
@@ -45,18 +45,16 @@ Mailing list: `bazel-go-discuss`_
 Announcements
 -------------
 
+July 10, 2018
+  Release `0.13.0 <https://github.com/bazelbuild/rules_go/releases/tag/0.13.0>`_
+  is now available.
+June 12, 2018
+  Releases `0.12.1 <https://github.com/bazelbuild/rules_go/releases/tag/0.12.1>`_,
+  `0.11.2 <https://github.com/bazelbuild/rules_go/releases/tag/0.11.2>`_, and
+  `0.10.5 <https://github.com/bazelbuild/rules_go/releases/tag/0.10.5>`_ are
+  now available. There will be no major release this month.
 May 8, 2018
   Release `0.12.0 <https://github.com/bazelbuild/rules_go/releases/tag/0.12.0>`_
-  is now available.
-April 30, 2018
-  Releases `0.11.1 <https://github.com/bazelbuild/rules_go/releases/tag/0.11.1>`_
-  and `0.10.4 <https://github.com/bazelbuild/rules_go/releases/tag/0.10.4>`_
-  are now available.
-April 23, 2018
-  Some rules will be deprecated or removed in the next release. See
-  `Deprecation schedule`_ for details.
-April 16, 2018
-  Release `0.11.0 <https://github.com/bazelbuild/rules_go/releases/tag/0.11.0>`_
   is now available.
 
 Contents
@@ -83,7 +81,6 @@ Documentation
 * `Toolchains <go/toolchains.rst>`_
 * `Extra rules <go/extras.rst>`_
 * `Build-time code analysis <go/checks.rst>`_
-* `Deprecated rules <go/deprecated.rst>`_
 * `Build modes <go/modes.rst>`_
 
 Quick links
@@ -113,7 +110,7 @@ They currently do not support (in order of importance):
 * C/C++ interoperation except cgo (swig etc.)
 * coverage
 
-:Note: The latest version of these rules (0.12.0) requires Bazel ≥ 0.10.0 to work.
+:Note: The latest version of these rules (0.13.0) requires Bazel ≥ 0.10.0 to work.
 
 The ``master`` branch is only guaranteed to work with the latest version of Bazel.
 
@@ -129,10 +126,11 @@ Setup
 
   .. code:: bzl
 
+    load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
     http_archive(
         name = "io_bazel_rules_go",
-        url = "https://github.com/bazelbuild/rules_go/releases/download/0.12.0/rules_go-0.12.0.tar.gz",
-        sha256 = "c1f52b8789218bb1542ed362c4f7de7052abcf254d865d96fb7ba6d44bc15ee3",
+        urls = ["https://github.com/bazelbuild/rules_go/releases/download/0.13.0/rules_go-0.13.0.tar.gz"],
+        sha256 = "ba79c532ac400cefd1859cbc8a9829346aa69e3b99482cd5a54432092cbc3933",
     )
     load("@io_bazel_rules_go//go:def.bzl", "go_rules_dependencies", "go_register_toolchains")
     go_rules_dependencies()
@@ -143,6 +141,7 @@ Setup
 
   .. code:: bzl
 
+    load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
     git_repository(
         name = "io_bazel_rules_go",
         remote = "https://github.com/bazelbuild/rules_go.git",
@@ -152,7 +151,8 @@ Setup
     go_rules_dependencies()
     go_register_toolchains()
 
-  You can add more external dependencies to this file later (see go_repository_).
+  You can add more external dependencies to this file later (see
+  `go_repository`_).
 
 * Add a file named ``BUILD.bazel`` in the root directory of your
   project. In general, you need one of these files in every directory
@@ -175,15 +175,16 @@ build files automatically using gazelle_.
 
   .. code:: bzl
 
+    load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
     http_archive(
         name = "io_bazel_rules_go",
-        url = "https://github.com/bazelbuild/rules_go/releases/download/0.12.0/rules_go-0.12.0.tar.gz",
-        sha256 = "c1f52b8789218bb1542ed362c4f7de7052abcf254d865d96fb7ba6d44bc15ee3",
+        urls = ["https://github.com/bazelbuild/rules_go/releases/download/0.13.0/rules_go-0.13.0.tar.gz"],
+        sha256 = "ba79c532ac400cefd1859cbc8a9829346aa69e3b99482cd5a54432092cbc3933",
     )
     http_archive(
         name = "bazel_gazelle",
-        url = "https://github.com/bazelbuild/bazel-gazelle/releases/download/0.12.0/bazel-gazelle-0.12.0.tar.gz",
-        sha256 = "ddedc7aaeb61f2654d7d7d4fd7940052ea992ccdb031b8f9797ed143ac7e8d43",
+        urls = ["https://github.com/bazelbuild/bazel-gazelle/releases/download/0.13.0/bazel-gazelle-0.13.0.tar.gz"],
+        sha256 = "bc653d3e058964a5a26dcad02b6c72d7d63e6bb88d94704990b908a1445b8758",
     )
     load("@io_bazel_rules_go//go:def.bzl", "go_rules_dependencies", "go_register_toolchains")
     go_rules_dependencies()
@@ -303,22 +304,22 @@ What's up with the ``go_default_library`` name?
 This was used to keep import paths consistent in libraries that can be built
 with ``go build`` before the ``importpath`` attribute was available.
 
-In order to compile and link correctly, the Go rules need to be able to
-translate Bazel labels to Go import paths. Libraries that don't set the
-``importpath`` attribute explicitly have an implicit dependency on ``//:go_prefix``,
-a special rule that specifies an import path prefix. The import path is
-the prefix concatenated with the Bazel package and target name. For example,
-if your prefix was ``github.com/example/project``, and your library was
-``//foo/bar:bar``, the Go rules would decide the import path was
-``github.com/example/project/foo/bar/bar``. The stutter at the end is incompatible
-with ``go build``, so if the label name is ``go_default_library``, the import path
-is just the prefix concatenated with the package name. So if your library is
-``//foo/bar:go_default_library``, the import path is
+In order to compile and link correctly, rules_go must know the Go import path
+(the string by which a package can be imported) for each library. This is now
+set explicitly with the ``importpath`` attribute. Before that attribute existed,
+the import path was inferred by concatenating a string from a special
+``go_prefix`` rule and the library's package and label name. For example, if
+``go_prefix`` was ``github.com/example/project``, for a library
+``//foo/bar:bar``, rules_go would infer the import path as
+``github.com/example/project/foo/bar/bar``. The stutter at the end is
+incompatible with ``go build``, so if the label name was ``go_default_library``,
+the import path would not include it. So for the library
+``//foo/bar:go_default_library``, the import path would be
 ``github.com/example/project/foo/bar``.
 
-We are working on deprecating ``go_prefix`` and making ``importpath`` mandatory (see
-`#721`_). When this work is   complete, the ``go_default_library`` name won't be needed.
-We may decide to stop using this name in the future (see `#265`_).
+Since ``go_prefix`` was removed and the ``importpath`` attribute became
+mandatory (see `#721`_), the ``go_default_library`` name no longer serves any
+purpose. We may decide to stop using it in the future (see `#265`_).
 
 How do I access testdata?
 ~~~~~~~~~~~~~~~~~~~~~~~~~

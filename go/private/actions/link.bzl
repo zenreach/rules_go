@@ -21,6 +21,7 @@ load(
 load(
     "@io_bazel_rules_go//go/private:mode.bzl",
     "LINKMODE_NORMAL",
+    "LINKMODE_PLUGIN",
 )
 
 def emit_link(
@@ -63,6 +64,8 @@ def emit_link(
     if go.mode.link != LINKMODE_NORMAL:
         builder_args.add(["-buildmode", go.mode.link])
         tool_args.add(["-linkmode", "external"])
+    if go.mode.link == LINKMODE_PLUGIN:
+        tool_args.add(["-pluginpath", archive.data.importpath])
 
     # Build the set of transitive dependencies. Currently, we tolerate multiple
     # archives with the same importmap (though this will be an error in the
@@ -94,7 +97,7 @@ def emit_link(
     base_rpath = origin + "../" * pkg_depth
     cgo_dynamic_deps = [
         d
-        for d in archive.cgo_deps
+        for d in archive.cgo_deps.to_list()
         if any([d.basename.endswith(ext) for ext in SHARED_LIB_EXTENSIONS])
     ]
     cgo_rpaths = []
@@ -129,6 +132,8 @@ def emit_link(
     if extldflags:
         tool_args.add(["-extldflags", " ".join(extldflags)])
 
+    builder_args.use_param_file("@%s")
+    builder_args.set_param_file_format("multiline")
     go.actions.run(
         inputs = sets.union(
             archive.libs,
@@ -148,15 +153,17 @@ def emit_link(
 def _bootstrap_link(go, archive, executable, gc_linkopts):
     """See go/toolchains.rst#link for full documentation."""
 
-    inputs = depset([archive.data.file])
+    inputs = [archive.data.file] + go.sdk_files + go.sdk_tools
     args = ["tool", "link", "-s", "-o", executable.path]
     args.extend(gc_linkopts)
     args.append(archive.data.file.path)
     go.actions.run_shell(
-        inputs = inputs + go.sdk_files + go.sdk_tools,
+        inputs = inputs,
         outputs = [executable],
         mnemonic = "GoLink",
-        command = "export GOROOT=$(pwd)/{} && export GOROOT_FINAL=GOROOT && {} {}".format(go.root, go.go.path, " ".join(args)),
+         # workaround: go link tool needs some features of gcc to complete the job on Arm platform.
+         # So, PATH for 'gcc' is required here on Arm platform.
+        command = "export GOROOT=$(pwd)/{} && export GOROOT_FINAL=GOROOT && export PATH={} && {} {}".format(go.root, go.cgo_tools.compiler_path, go.go.path, " ".join(args)),
     )
 
 def _extract_extldflags(gc_linkopts, extldflags):

@@ -18,6 +18,7 @@ load(
 )
 load(
     "@io_bazel_rules_go//go/private:mode.bzl",
+    "LINKMODE_C_ARCHIVE",
     "LINKMODE_C_SHARED",
     "LINKMODE_PLUGIN",
 )
@@ -41,7 +42,8 @@ def emit_compile(
         archives = [],
         out_lib = None,
         gc_goopts = [],
-        testfilter = None):
+        testfilter = None,
+        asmhdr = None):
     """See go/toolchains.rst#compile for full documentation."""
 
     if sources == None:
@@ -57,6 +59,7 @@ def emit_compile(
     inputs = (sources + [go.package_list] +
               [archive.data.file for archive in archives] +
               go.sdk_tools + go.stdlib.files)
+    outputs = [out_lib]
 
     builder_args = go.args(go)
     builder_args.add(sources, before_each = "-src")
@@ -72,6 +75,9 @@ def emit_compile(
         inputs.append(go.checker.executable)
 
     tool_args = go.actions.args()
+    if asmhdr:
+        tool_args.add(["-asmhdr", asmhdr.path])
+        outputs.append(asmhdr)
     tool_args.add(archives, before_each = "-I", map_fn = _searchpath)
     tool_args.add(["-trimpath", ".", "-I", "."])
 
@@ -83,18 +89,18 @@ def emit_compile(
         tool_args.add("-race")
     if go.mode.msan:
         tool_args.add("-msan")
-    if go.mode.link == LINKMODE_C_SHARED:
+    if go.mode.link in [LINKMODE_C_ARCHIVE, LINKMODE_C_SHARED]:
         tool_args.add("-shared")
+    if go.mode.link == LINKMODE_PLUGIN:
+        tool_args.add("-dynlink")
     if importpath:
         tool_args.add(["-p", importpath])
     if go.mode.debug:
         tool_args.add(["-N", "-l"])
-    if go.mode.link in [LINKMODE_PLUGIN]:
-        tool_args.add(["-dynlink"])
     tool_args.add(go.toolchain.flags.compile)
     go.actions.run(
         inputs = inputs,
-        outputs = [out_lib],
+        outputs = outputs,
         mnemonic = "GoCompile",
         executable = go.builders.compile,
         arguments = [builder_args, "--", tool_args],

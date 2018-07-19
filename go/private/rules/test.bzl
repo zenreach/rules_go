@@ -18,13 +18,10 @@ load(
 )
 load(
     "@io_bazel_rules_go//go/private:common.bzl",
-    "go_filetype",
+    "asm_exts",
+    "go_exts",
     "pkg_dir",
     "split_srcs",
-)
-load(
-    "@io_bazel_rules_go//go/private:rules/prefix.bzl",
-    "go_prefix_default",
 )
 load(
     "@io_bazel_rules_go//go/private:rules/binary.bzl",
@@ -43,6 +40,11 @@ load(
 load(
     "@io_bazel_rules_go//go/private:rules/rule.bzl",
     "go_rule",
+)
+load(
+    "@io_bazel_rules_go//go/platform:list.bzl",
+    "GOARCH",
+    "GOOS",
 )
 load(
     "@io_bazel_rules_go//go/private:mode.bzl",
@@ -172,7 +174,7 @@ go_test = go_rule(
             allow_files = True,
             cfg = "data",
         ),
-        "srcs": attr.label_list(allow_files = go_filetype),
+        "srcs": attr.label_list(allow_files = go_exts + asm_exts),
         "deps": attr.label_list(
             providers = [GoLibrary],
             aspects = [go_archive_aspect],
@@ -212,6 +214,14 @@ go_test = go_rule(
                 "off",
                 "auto",
             ],
+            default = "auto",
+        ),
+        "goos": attr.string(
+            values = GOOS.keys() + ["auto"],
+            default = "auto",
+        ),
+        "goarch": attr.string(
+            values = GOARCH.keys() + ["auto"],
             default = "auto",
         ),
         "gc_goopts": attr.string_list(),

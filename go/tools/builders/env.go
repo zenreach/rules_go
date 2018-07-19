@@ -19,12 +19,20 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
+)
+
+var (
+	// cgoEnvVars is the list of all cgo environment variable
+	cgoEnvVars = []string{"CGO_CFLAGS", "CGO_CXXFLAGS", "CGO_CPPFLAGS", "CGO_LDFLAGS"}
+	// cgoAbsEnvFlags are all the flags that need absolute path in cgoEnvVars
+	cgoAbsEnvFlags = []string{"-I", "-L", "-isysroot", "-isystem", "-iquote", "-include", "-gcc-toolchain", "--sysroot"}
 )
 
 // env holds a small amount of Go environment and toolchain information
@@ -100,6 +108,17 @@ func (e *env) runCommandToFile(w io.Writer, args []string) error {
 	return runAndLogCommand(cmd, e.verbose)
 }
 
+func absEnv(envNameList []string, argList []string) error {
+	for _, envName := range envNameList {
+		splitedEnv := strings.Fields(os.Getenv(envName))
+		absArgs(splitedEnv, argList)
+		if err := os.Setenv(envName, strings.Join(splitedEnv, " ")); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func runAndLogCommand(cmd *exec.Cmd, verbose bool) error {
 	if verbose {
 		formatCommand(os.Stderr, cmd)
@@ -113,13 +132,30 @@ func runAndLogCommand(cmd *exec.Cmd, verbose bool) error {
 // splitArgs splits a list of command line arguments into two parts: arguments
 // that should be interpreted by the builder (before "--"), and arguments
 // that should be passed through to the underlying tool (after "--").
+// A group consisting of a single argument that is prefixed with an '@', is
+// treated as a pointer to a params file, which is read and its contents used
+// as the arguments.
 func splitArgs(args []string) (builderArgs []string, toolArgs []string) {
 	for i, arg := range args {
 		if arg == "--" {
-			return args[:i], args[i+1:]
+
+			return readParamsFile(args[:i]), readParamsFile(args[i+1:])
 		}
 	}
-	return args, nil
+	return readParamsFile(args), nil
+}
+
+// readParamsFile replaces the passed in slice with the contents of a params
+// file, if the slice is a single string that starts with an '@'.
+// Errors reading the file are ignored and the original slice is returned.
+func readParamsFile(args []string) []string {
+	if len(args) == 1 && strings.HasPrefix(args[0], "@") {
+		content, err := ioutil.ReadFile(args[0][1:])
+		if err == nil {
+			args = strings.Split(string(content), "\n")
+		}
+	}
+	return args
 }
 
 // abs returns the absolute representation of path. Some tools/APIs require
@@ -144,29 +180,21 @@ func absArgs(args []string, flags []string) {
 			absNext = false
 			continue
 		}
-		if !strings.HasPrefix(args[i], "-") {
-			continue
-		}
-		var flag, value string
-		var separate bool
-		if j := strings.IndexByte(args[i], '='); j >= 0 {
-			flag = args[i][:j]
-			value = args[i][j+1:]
-		} else {
-			separate = true
-			flag = args[i]
-		}
-		flag = strings.TrimLeft(args[i], "-")
 		for _, f := range flags {
-			if flag != f {
+			if !strings.HasPrefix(args[i], f) {
 				continue
 			}
-			if separate {
+			possibleValue := args[i][len(f):]
+			if len(possibleValue) == 0 {
 				absNext = true
-			} else {
-				value = abs(value)
-				args[i] = fmt.Sprintf("-%s=%s", flag, value)
+				break
 			}
+			separator := ""
+			if possibleValue[0] == '=' {
+				possibleValue = possibleValue[1:]
+				separator = "="
+			}
+			args[i] = fmt.Sprintf("%s%s%s", f, separator, abs(possibleValue))
 			break
 		}
 	}

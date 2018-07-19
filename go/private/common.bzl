@@ -62,14 +62,6 @@ objc_exts = [
     ".hxx",
 ]
 
-go_filetype = FileType(go_exts + asm_exts)
-
-cc_hdr_filetype = FileType(hdr_exts)
-
-# Extensions of files we can build with the Go compiler or with cc_library.
-# This is a subset of the extensions recognized by go/build.
-cgo_filetype = FileType(go_exts + asm_exts + c_exts + cxx_exts + objc_exts)
-
 def pkg_dir(workspace_root, package_name):
     """Returns a relative path to a package directory from the root of the
     sandbox. Useful at execution-time or run-time."""
@@ -120,7 +112,7 @@ def env_execute(ctx, arguments, environment = {}, **kwargs):
     to "arguments" before calling "ctx.execute".
 
     Variables that aren't explicitly mentioned in "environment"
-    are removed from the environment. This should be preferred to "ctx.execut"e
+    are removed from the environment. This should be preferred to "ctx.execute"
     in most situations.
     """
     if ctx.os.name.startswith("windows"):
@@ -134,6 +126,18 @@ def env_execute(ctx, arguments, environment = {}, **kwargs):
         env_args.append("%s=%s" % (k, v))
     arguments = env_args + arguments
     return ctx.execute(arguments, **kwargs)
+
+def os_path(ctx, path):
+    path = str(path)  # maybe convert from path type
+    if ctx.os.name.startswith("windows"):
+        path = path.replace("/", "\\")
+    return path
+
+def executable_path(ctx, path):
+    path = os_path(ctx, path)
+    if ctx.os.name.startswith("windows"):
+        path += ".exe"
+    return path
 
 def executable_extension(ctx):
     extension = ""
