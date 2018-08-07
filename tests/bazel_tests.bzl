@@ -7,6 +7,10 @@ load(
     "env_execute",
 )
 load(
+    "@io_bazel_rules_go//go/private:go_toolchain.bzl",
+    "generate_toolchain_names",
+)
+load(
     "@io_bazel_rules_go//go/private:rules/rule.bzl",
     "go_rule",
 )
@@ -135,10 +139,24 @@ def _bazel_test_script_impl(ctx):
         ctx.actions.write(script_file, "", is_executable = True)
         return [DefaultInfo(files = depset([script_file]))]
 
-    if ctx.attr.go_version == CURRENT_VERSION:
-        register = "go_register_toolchains()\n"
-    elif ctx.attr.go_version != None:
-        register = 'go_register_toolchains(go_version="{}")\n'.format(ctx.attr.go_version)
+    register = ""
+    if any([ext.label.workspace_root.endswith("/go_sdk") for ext in ctx.attr.externals]):
+        register += "register_toolchains(\n{}\n)\n".format(
+            "\n".join(['    "@go_sdk//:{}",'.format(name)
+                       for name in generate_toolchain_names()]))
+
+    # if ctx.attr.go_version == CURRENT_VERSION:
+    #     register += "go_register_toolchains()\n"
+    # elif ctx.attr.go_version != None:
+    #     register += 'go_register_toolchains(go_version="{}")\n'.format(ctx.attr.go_version)
+
+    if ctx.attr.go_version != None or ctx.attr.go_checker != "":
+        register += "go_register_toolchains(\n"
+        if ctx.attr.go_checker != "":
+            register += 'go_checker="{}",\n'.format(ctx.attr.go_checker)
+        if ctx.attr.go_version != None and ctx.attr.go_version != CURRENT_VERSION:
+            register += 'go_version="{}",\n'.format(ctx.attr.go_version)
+        register += ")\n"
 
     workspace_content = 'workspace(name = "bazel_test")\n\n'
     for ext in ctx.attr.externals:
@@ -214,6 +232,7 @@ _bazel_test_script = go_rule(
         "externals": attr.label_list(allow_files = True),
         "go_version": attr.string(default = CURRENT_VERSION),
         "workspace": attr.string(),
+        "go_checker": attr.string(),
         "build": attr.string(),
         "check": attr.string(),
         "config": attr.string(default = "isolate"),
@@ -224,15 +243,14 @@ _bazel_test_script = go_rule(
         ),
         "clean_build": attr.bool(default = False),
         "bazelrc": attr.label(
-            allow_files = True,
-            single_file = True,
+            allow_single_file = True,
             default = "@bazel_test//:standalone_bazelrc",
         ),
-        "_settings": attr.label(default = Label("@bazel_test//:settings")),
+        "_settings": attr.label(default = "@bazel_test//:settings"),
     },
 )
 
-def bazel_test(name, command = None, args = None, targets = None, go_version = None, tags = [], externals = [], workspace = "", build = "", check = "", config = None, extra_files = [], standalone = True, clean_build = False):
+def bazel_test(name, command = None, args = None, targets = None, go_version = None, tags = [], externals = [], workspace = "", go_checker = "", build = "", check = "", config = None, extra_files = [], standalone = True, clean_build = False):
     script_name = name + "_script"
     externals = externals + [
         "@io_bazel_rules_go//:AUTHORS",
@@ -256,6 +274,7 @@ def bazel_test(name, command = None, args = None, targets = None, go_version = N
         go_version = go_version,
         targets = targets,
         workspace = workspace,
+        go_checker = go_checker,
     )
     native.sh_test(
         name = name,
@@ -274,13 +293,13 @@ def _md5_sum_impl(ctx):
     go = go_context(ctx)
     out = go.declare_file(go, ext = ".md5")
     arguments = ctx.actions.args()
-    arguments.add(["-output", out.path])
-    arguments.add(ctx.files.srcs)
+    arguments.add_all(["-output", out])
+    arguments.add_all(ctx.files.srcs)
     ctx.actions.run(
         inputs = ctx.files.srcs,
         outputs = [out],
         mnemonic = "GoMd5sum",
-        executable = ctx.file._md5sum,
+        executable = ctx.executable._md5sum,
         arguments = [arguments],
     )
     return struct(files = depset([out]))
@@ -290,9 +309,9 @@ md5_sum = go_rule(
     attrs = {
         "srcs": attr.label_list(allow_files = True),
         "_md5sum": attr.label(
-            allow_files = True,
-            single_file = True,
-            default = Label("@io_bazel_rules_go//go/tools/builders:md5sum"),
+            executable = True,
+            default = "@io_bazel_rules_go//go/tools/builders:md5sum",
+            cfg = "host",
         ),
     },
 )
