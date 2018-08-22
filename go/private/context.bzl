@@ -32,6 +32,7 @@ load(
 load(
     "@io_bazel_rules_go//go/private:mode.bzl",
     "get_mode",
+    "installsuffix",
     "mode_string",
 )
 load(
@@ -78,9 +79,22 @@ def _declare_directory(go, path = "", ext = "", name = ""):
     return go.actions.declare_directory(_child_name(go, path, ext, name))
 
 def _new_args(go):
+    # TODO(jayconrod): print warning.
+    return go.builder_args(go)
+
+def _builder_args(go):
     args = go.actions.args()
-    args.add_all(["-sdk", go.sdk.root_file.dirname])
+    args.use_param_file("-param=%s")
+    args.set_param_file_format("multiline")
+    args.add("-sdk", go.sdk.root_file.dirname)
+    args.add("-installsuffix", installsuffix(go.mode))
     args.add_joined("-tags", go.tags, join_with = ",")
+    return args
+
+def _tool_args(go):
+    args = go.actions.args()
+    args.use_param_file("-param=%s")
+    args.set_param_file_format("multiline")
     return args
 
 def _new_library(go, name = None, importpath = None, resolver = None, importable = True, testfilter = None, **kwargs):
@@ -282,7 +296,9 @@ def go_context(ctx, attr = None):
         pack = toolchain.actions.pack,
 
         # Helpers
-        args = _new_args,
+        args = _new_args,  # deprecated
+        builder_args = _builder_args,
+        tool_args = _tool_args,
         new_library = _new_library,
         library_to_source = _library_to_source,
         declare_file = _declare_file,

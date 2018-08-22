@@ -70,8 +70,8 @@ def emit_link(
     if go.coverage_enabled:
         extldflags.append("--coverage")
     gc_linkopts, extldflags = _extract_extldflags(gc_linkopts, extldflags)
-    builder_args = go.args(go)
-    tool_args = go.actions.args()
+    builder_args = go.builder_args(go)
+    tool_args = go.tool_args(go)
 
     # Add in any mode specific behaviours
     extld = go.cgo_tools.compiler_executable
@@ -88,9 +88,13 @@ def emit_link(
     if go.mode.link == LINKMODE_PLUGIN:
         tool_args.add_all(["-pluginpath", archive.data.importpath])
 
-    builder_args.add_all([struct(archive = archive, test_archives = test_archives)], before_each = "-dep",
-        map_each = _map_archive)
-    builder_args.add_all(test_archives, before_each = "-dep", map_each = _format_archive)
+    builder_args.add_all(
+        [struct(archive = archive, test_archives = test_archives)],
+        before_each = "-arc",
+        map_each = _map_archive,
+    )
+    builder_args.add_all(test_archives, before_each = "-arc", map_each = _format_archive)
+    builder_args.add("-package_list", go.package_list)
 
     # Build a list of rpaths for dynamic libraries we need to find.
     # rpaths are relative paths from the binary to directories where libraries
@@ -138,8 +142,6 @@ def emit_link(
         tool_args.add("-w")
     tool_args.add_joined("-extldflags", extldflags, join_with = " ")
 
-    builder_args.use_param_file("@%s")
-    builder_args.set_param_file_format("multiline")
     go.actions.run(
         inputs = sets.union(
             archive.libs,
@@ -147,6 +149,7 @@ def emit_link(
             go.crosstool,
             stamp_inputs,
             go.sdk.tools,
+            [go.sdk.package_list],
             go.stdlib.libs,
         ),
         outputs = [executable],

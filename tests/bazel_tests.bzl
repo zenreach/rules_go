@@ -145,11 +145,6 @@ def _bazel_test_script_impl(ctx):
             "\n".join(['    "@go_sdk//:{}",'.format(name)
                        for name in generate_toolchain_names()]))
 
-    # if ctx.attr.go_version == CURRENT_VERSION:
-    #     register += "go_register_toolchains()\n"
-    # elif ctx.attr.go_version != None:
-    #     register += 'go_register_toolchains(go_version="{}")\n'.format(ctx.attr.go_version)
-
     if ctx.attr.go_version != None or ctx.attr.go_checker != "":
         register += "go_register_toolchains(\n"
         if ctx.attr.go_checker != "":

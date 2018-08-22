@@ -27,6 +27,10 @@ import (
 
 func run(args []string) error {
 	// process the args
+	args, err := readParamsFiles(args)
+	if err != nil {
+		return err
+	}
 	flags := flag.NewFlagSet("stdlib", flag.ExitOnError)
 	goenv := envFlags(flags)
 	filterBuildid := flags.String("filter_buildid", "", "Path to filter_buildid tool")
@@ -48,6 +52,11 @@ func run(args []string) error {
 
 	// Link in the bare minimum needed to the new GOROOT
 	if err := replicate(goroot, output, replicatePaths("src", "pkg/tool", "pkg/include")); err != nil {
+		return err
+	}
+
+	output, err = processPath(output)
+	if err != nil {
 		return err
 	}
 

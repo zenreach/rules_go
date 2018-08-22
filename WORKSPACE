@@ -1,6 +1,7 @@
 workspace(name = "io_bazel_rules_go")
 
-load("@io_bazel_rules_go//go:def.bzl", "go_rules_dependencies", "go_register_toolchains")
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("@io_bazel_rules_go//go:def.bzl", "go_register_toolchains", "go_rules_dependencies")
 load("@io_bazel_rules_go//proto:def.bzl", "proto_register_toolchains")
 
 go_rules_dependencies()
@@ -8,6 +9,12 @@ go_rules_dependencies()
 go_register_toolchains()
 
 # Needed for tests
+http_archive(
+    name = "bazel_gazelle",
+    sha256 = "c0a5739d12c6d05b6c1ad56f2200cb0b57c5a70e03ebd2f7b87ce88cabf09c7b",
+    urls = ["https://github.com/bazelbuild/bazel-gazelle/releases/download/0.14.0/bazel-gazelle-0.14.0.tar.gz"],
+)
+
 load("@bazel_gazelle//:deps.bzl", "gazelle_dependencies")
 
 gazelle_dependencies()
@@ -38,4 +45,14 @@ load("@com_grail_bazel_toolchain//toolchain:configure.bzl", "llvm_toolchain")
 llvm_toolchain(
     name = "llvm_toolchain",
     llvm_version = "6.0.0",
+)
+
+http_archive(
+    name = "bazel_toolchains",
+    sha256 = "c3b08805602cd1d2b67ebe96407c1e8c6ed3d4ce55236ae2efe2f1948f38168d",
+    strip_prefix = "bazel-toolchains-5124557861ebf4c0b67f98180bff1f8551e0b421",
+    urls = [
+        "https://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/archive/5124557861ebf4c0b67f98180bff1f8551e0b421.tar.gz",
+        "https://github.com/bazelbuild/bazel-toolchains/archive/5124557861ebf4c0b67f98180bff1f8551e0b421.tar.gz",
+    ],
 )

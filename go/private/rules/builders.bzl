@@ -69,8 +69,6 @@ builders = rule(
             default = "//go/tools/builders:cgo",
         ),
         "_checker_generator": attr.label(
-            allow_files = True,
-            single_file = True,
             executable = True,
             cfg = "host",
             default = "//go/tools/builders:generate_checker_main",

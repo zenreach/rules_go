@@ -23,17 +23,14 @@ load(
     "shell",
 )
 
-def _importpath(v):
-    return v.data.importpath
-
-def _searchpath(v):
-    return v.data.searchpath
-
 def _importmap(v):
     return "{}={}".format(v.data.importpath, v.data.importmap)
 
 def _archivefile(v):
     return "{}={}".format(v.data.importpath, v.data.file.path)
+
+def _archive(v):
+    return "{}={}={}".format(v.data.importpath, v.data.importmap, v.data.file.path)
 
 def emit_compile(
         go,
@@ -61,26 +58,25 @@ def emit_compile(
               go.sdk.tools + go.stdlib.libs)
     outputs = [out_lib]
 
-    builder_args = go.args(go)
+    builder_args = go.builder_args(go)
     builder_args.add_all(sources, before_each = "-src")
-    builder_args.add_all(archives, before_each = "-dep", map_each = _importpath)
+    builder_args.add_all(archives, before_each = "-arc", map_each = _archive)
+    builder_args.add_all(["-o", out_lib])
+    builder_args.add_all(["-package_list", go.package_list])
     builder_args.add_all(archives, before_each = "-importmap", map_each = _importmap)
     builder_args.add_all(archives, before_each = "-archivefile", map_each = _archivefile)
-    builder_args.add_all(["-o", out_lib])
     builder_args.add_all(["-stdlib", go.toolchain.sdk.root_file.dirname+"/pkg/"+go.toolchain.sdk.goos+"_"+go.toolchain.sdk.goarch])
-    builder_args.add_all(["-package_list", go.package_list])
     if testfilter:
         builder_args.add_all(["-testfilter", testfilter])
     if go.checker:
         builder_args.add_all(["-checker", go.checker.executable])
         inputs.append(go.checker.executable)
 
-    tool_args = go.actions.args()
+    tool_args = go.tool_args(go)
     if asmhdr:
         tool_args.add_all(["-asmhdr", asmhdr])
         outputs.append(asmhdr)
-    tool_args.add_all(archives, before_each = "-I", map_each = _searchpath)
-    tool_args.add_all(["-trimpath", ".", "-I", "."])
+    tool_args.add_all(["-trimpath", "."])
 
     #TODO: Check if we really need this expand make variables in here
     #TODO: If we really do then it needs to be moved all the way back out to the rule
