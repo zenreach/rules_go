@@ -28,9 +28,9 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"io/ioutil"
 	"log"
 	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -43,29 +43,23 @@ import (
 // one analysis fails. All other errors (e.g. during loading) are logged but
 // do not return an error so as not to unnecessarily interrupt builds.
 func run(args []string) error {
-	archiveFiles := multiFlag{}
-	importMapIn := multiFlag{}
 	srcs := multiFlag{}
+	stdImports := multiFlag{}
 	flags := flag.NewFlagSet("checker", flag.ContinueOnError)
-	flags.Var(&archiveFiles, "archivefile", "Archive file of a direct dependency")
-	flags.Var(&importMapIn, "importmap", "Import maps of a direct dependency")
 	flags.Var(&srcs, "src", "A source file being compiled")
+	flags.Var(&stdImports, "stdimport", "A standard library import path")
 	vetTool := flags.String("vet_tool", "", "The vet tool")
-	stdLib := flags.String("stdlib", "", "The directory containing stdlib packages")
-	packageList := flags.String("package_list", "", "The file containing the list of standard library packages")
+	importcfg := flags.String("importcfg", "", "The import configuration file")
 	if err := flags.Parse(args); err != nil {
 		log.Println(err)
 		return nil
 	}
-	// TODO(samueltan): derive this information from the importcfg file built by
-	// compile.go instead of using multiple flags.
-	packageFile, importMap, err := parseArchivesAndImportMap(archiveFiles, importMapIn)
+	packageFile, importMap, err := readImportCfg(*importcfg)
 	if err != nil {
-		log.Printf("error parsing arguments: %v", err)
-		return nil
+		return fmt.Errorf("error parsing importcfg: %v", err)
 	}
 	if enableVet {
-		vcfgFile, err := makeVetCfg(*packageList, *stdLib, packageFile, importMap, srcs)
+		vcfgFile, err := buildVetcfgFile(packageFile, importMap, stdImports, srcs)
 		if err != nil {
 			log.Printf("error creating vet config: %v", err)
 			return nil
@@ -80,7 +74,7 @@ func run(args []string) error {
 	}
 	c := make(chan result)
 	fset := token.NewFileSet()
-	if err := runAnalyses(c, fset, packageFile, importMap, flags.Args(), *stdLib); err != nil {
+	if err := runAnalyses(c, fset, packageFile, importMap, flags.Args()); err != nil {
 		log.Printf("error running analyses: %s\n", err)
 		return nil
 	}
@@ -90,44 +84,56 @@ func run(args []string) error {
 	return nil
 }
 
-// parseArchivesAndImportMap parses the -archivefile and -importmap arguments
-// created by the compile rule into the packageFiles and importMap maps used
-// by the vet and checker importers.
-func parseArchivesAndImportMap(archiveFiles, importMapIn []string) (packageFiles map[string]string, importMap map[string]string, err error) {
-	packageFiles, importMap = make(map[string]string), make(map[string]string)
-	for _, mapping := range importMapIn {
-		i := strings.Index(mapping, "=")
-		if i < 0 {
-			return nil, nil, fmt.Errorf("invalid importmap %v: no = separator", mapping)
-		}
-		source := mapping[:i]
-		actual := mapping[i+1:]
-		if source == "" || actual == "" {
+// Adapted from go/src/cmd/compile/internal/gc/main.go. Keep in sync.
+func readImportCfg(file string) (packageFile map[string]string, importMap map[string]string, err error) {
+	packageFile, importMap = make(map[string]string), make(map[string]string)
+	data, err := ioutil.ReadFile(file)
+	if err != nil {
+		return nil, nil, fmt.Errorf("-importcfg: %v", err)
+	}
+
+	for lineNum, line := range strings.Split(string(data), "\n") {
+		lineNum++ // 1-based
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		importMap[source] = actual
-	}
-	for _, a := range archiveFiles {
-		kv := strings.Split(a, "=")
-		if len(kv) != 2 {
-			return nil, nil, fmt.Errorf("invalid archivefile %v: no = separator", a)
+
+		var verb, args string
+		if i := strings.Index(line, " "); i < 0 {
+			verb = line
+		} else {
+			verb, args = line[:i], strings.TrimSpace(line[i+1:])
 		}
-		path := kv[0]
-		if p, ok := importMap[path]; ok {
-			path = p
+		var before, after string
+		if i := strings.Index(args, "="); i >= 0 {
+			before, after = args[:i], args[i+1:]
 		}
-		packageFiles[path] = kv[1]
+		switch verb {
+		default:
+			log.Fatalf("%s:%d: unknown directive %q", file, lineNum, verb)
+		case "importmap":
+			if before == "" || after == "" {
+				return nil, nil, fmt.Errorf(`%s:%d: invalid importmap: syntax is "importmap old=new"`, file, lineNum)
+			}
+			importMap[before] = after
+		case "packagefile":
+			if before == "" || after == "" {
+				return nil, nil, fmt.Errorf(`%s:%d: invalid packagefile: syntax is "packagefile path=filename"`, file, lineNum)
+			}
+			packageFile[before] = after
+		}
 	}
 	return
 }
 
 // runAnalyses runs all analyses, filters results, and writes findings to the
 // given channel.
-func runAnalyses(c chan result, fset *token.FileSet, packageFile, importMap map[string]string, srcFiles []string, stdLib string) error {
+func runAnalyses(c chan result, fset *token.FileSet, packageFile, importMap map[string]string, srcFiles []string) error {
 	if len(analysis.Analyses()) == 0 {
 		return nil
 	}
-	apkg, err := newAnalysisPackage(fset, packageFile, importMap, srcFiles, stdLib)
+	apkg, err := newAnalysisPackage(fset, packageFile, importMap, srcFiles)
 	if err != nil {
 		return fmt.Errorf("error building analysis package: %s\n", err)
 	}
@@ -154,13 +160,12 @@ func runAnalyses(c chan result, fset *token.FileSet, packageFile, importMap map[
 	return nil
 }
 
-func newAnalysisPackage(fset *token.FileSet, packageFile, importMap map[string]string, srcFiles []string, stdLib string) (*analysis.Package, error) {
+func newAnalysisPackage(fset *token.FileSet, packageFile, importMap map[string]string, srcFiles []string) (*analysis.Package, error) {
 	imp := &importer{
 		fset:         fset,
 		importMap:    importMap,
 		packageCache: make(map[string]*types.Package),
 		packageFile:  packageFile,
-		stdLib:       stdLib,
 	}
 	apkg, err := load(fset, imp, srcFiles)
 	if err != nil {
@@ -280,8 +285,7 @@ type importer struct {
 	fset         *token.FileSet
 	importMap    map[string]string         // map import path in source code to package path
 	packageCache map[string]*types.Package // cache of previously imported packages
-	packageFile  map[string]string         // map non-stdlib package path to .a file with export data
-	stdLib       string                    // the directory containing stdlib packages
+	packageFile  map[string]string         // map package path to .a file with export data
 }
 
 func (i *importer) Import(path string) (*types.Package, error) {
@@ -298,8 +302,7 @@ func (i *importer) Import(path string) (*types.Package, error) {
 
 	archive, ok := i.packageFile[path]
 	if !ok {
-		// stdlib package.
-		archive = filepath.Join(i.stdLib, path+".a")
+		return nil, fmt.Errorf("could not import %q", path)
 	}
 	// open file
 	f, err := os.Open(archive)
