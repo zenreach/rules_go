@@ -27,6 +27,8 @@ POPULAR_REPOS = [
             "ssh/agent:go_default_test",
             "ssh:go_default_test",
             "ssh/test:go_default_test",
+            "blake2b:go_default_test", # old crypto test fails in go1.11
+            "bn256:go_default_test", # old crypto test fails in go1.11
         ],
     ),
 
