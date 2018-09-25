@@ -190,7 +190,7 @@ def _cgo_codegen_impl(ctx):
 
     tool_args.add(["-objdir", out_dir])
 
-    inputs = sets.union(ctx.files.srcs, go.crosstool, go.sdk_tools, go.stdlib.files)
+    inputs = sets.union(ctx.files.srcs, go.crosstool, go.sdk_tools)
     deps = depset()
     runfiles = ctx.runfiles(collect_data = True)
     for d in ctx.attr.deps:
