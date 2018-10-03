@@ -94,6 +94,12 @@ def _prepare(ctx):
     ctx.file("packages.txt", result.stdout)
     ctx.file("ROOT", "")
 
+    # Go 1.11.1 contains testdata files with '!' in their filenames which
+    # older versions of Bazel (0.10.0) don't like. Remove if we downloaded
+    # the SDK. If this is a local SDK, we're probably out of luck.
+    sh = ctx.os.environ.get("BAZEL_SH", "/bin/sh")
+    env_execute(ctx, arguments = [sh, "-c", "[ -d src -a ! -L src ] && rm -f src/cmd/go/testdata/mod/*!*"])
+
 def _remote_sdk(ctx, urls, strip_prefix, sha256):
     ctx.download_and_extract(
         url = urls,
