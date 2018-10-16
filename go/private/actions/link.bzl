@@ -22,6 +22,8 @@ load(
     "@io_bazel_rules_go//go/private:mode.bzl",
     "LINKMODE_NORMAL",
     "LINKMODE_PLUGIN",
+    "extld_from_cc_toolchain",
+    "extldflags_from_cc_toolchain",
 )
 load(
     "@io_bazel_rules_go//go/private:skylib/lib/shell.bzl",
@@ -66,7 +68,7 @@ def emit_link(
     config_strip = len(go._ctx.configuration.bin_dir.path) + 1
     pkg_depth = executable.dirname[config_strip:].count("/") + 1
 
-    extldflags = list(go.cgo_tools.linker_options)
+    extldflags = list(extldflags_from_cc_toolchain(go))
     if go.coverage_enabled:
         extldflags.append("--coverage")
     gc_linkopts, extldflags = _extract_extldflags(gc_linkopts, extldflags)
@@ -74,8 +76,7 @@ def emit_link(
     tool_args = go.actions.args()
 
     # Add in any mode specific behaviours
-    extld = go.cgo_tools.compiler_executable
-    tool_args.add_all(["-extld", extld])
+    tool_args.add_all(extld_from_cc_toolchain(go))
     if go.mode.race:
         tool_args.add("-race")
     if go.mode.msan:
@@ -88,8 +89,11 @@ def emit_link(
     if go.mode.link == LINKMODE_PLUGIN:
         tool_args.add_all(["-pluginpath", archive.data.importpath])
 
-    builder_args.add_all([struct(archive = archive, test_archives = test_archives)], before_each = "-dep",
-        map_each = _map_archive)
+    builder_args.add_all(
+        [struct(archive = archive, test_archives = test_archives)],
+        before_each = "-dep",
+        map_each = _map_archive,
+    )
     builder_args.add_all(test_archives, before_each = "-dep", map_each = _format_archive)
 
     # Build a list of rpaths for dynamic libraries we need to find.
@@ -134,6 +138,7 @@ def emit_link(
     builder_args.add_all(["-main", archive.data.file])
     tool_args.add_all(gc_linkopts)
     tool_args.add_all(go.toolchain.flags.link)
+
     # Do not remove, somehow this is needed when building for darwin/arm only.
     tool_args.add("-buildid=redacted")
     if go.mode.strip:
@@ -172,12 +177,7 @@ def _bootstrap_link(go, archive, executable, gc_linkopts):
         arguments = [args],
         mnemonic = "GoLink",
         command = "export GOROOT=\"$(pwd)\"/{} && {} \"$@\"".format(shell.quote(go.root), shell.quote(go.go.path)),
-        env = {
-            # workaround: go link tool needs some features of gcc to complete the job on Arm platform.
-            # So, PATH for 'gcc' is required here on Arm platform.
-            "PATH": go.cgo_tools.compiler_path,
-            "GOROOT_FINAL": "GOROOT",
-        },
+        env = {"GOROOT_FINAL": "GOROOT"},
     )
 
 def _extract_extldflags(gc_linkopts, extldflags):

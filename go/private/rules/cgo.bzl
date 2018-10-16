@@ -39,6 +39,7 @@ load(
     "@io_bazel_rules_go//go/private:mode.bzl",
     "LINKMODE_C_ARCHIVE",
     "LINKMODE_C_SHARED",
+    "extldflags_from_cc_toolchain",
 )
 
 _CgoCodegen = provider()
@@ -129,9 +130,9 @@ def _cgo_codegen_impl(ctx):
     go = go_context(ctx)
     if not go.cgo_tools:
         fail("Go toolchain does not support cgo")
-    linkopts = go.cgo_tools.linker_options + ctx.attr.linkopts
-    cppopts = go.cgo_tools.compiler_options + ctx.attr.cppopts
-    copts = go.cgo_tools.c_options + ctx.attr.copts
+    linkopts = extldflags_from_cc_toolchain(go) + ctx.attr.linkopts
+    cppopts = list(ctx.attr.cppopts)
+    copts = go.cgo_tools.c_compile_options + ctx.attr.copts
     deps = depset([], order = "topological")
     cgo_export_h = go.declare_file(go, path = "_cgo_export.h")
     cgo_export_c = go.declare_file(go, path = "_cgo_export.c")
@@ -242,7 +243,7 @@ def _cgo_codegen_impl(ctx):
     # TODO(jayconrod): do we need to set this here, or only in _cgo_import?
     # go build does it here.
     env = go.env
-    env["CC"] = go.cgo_tools.compiler_executable
+    env["CC"] = go.cgo_tools.c_compiler_path
     env["CGO_LDFLAGS"] = " ".join(linkopts)
 
     cc_args.add_all(cppopts)

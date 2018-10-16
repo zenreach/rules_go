@@ -47,7 +47,7 @@ def go_proto_compile(go, compiler, proto, imports, importpath):
         "--plugin",
         compiler.plugin,
         "--compiler_path",
-        go.cgo_tools.compiler_path,
+        go.cgo_tools.c_compiler_path.rpartition("/")[0],
     ])
     args.add_all(compiler.options, before_each = "--option")
     if compiler.import_path_option:
