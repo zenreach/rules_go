@@ -149,7 +149,7 @@ def _library_to_source(go, attr, library, coverage_instrumented):
         "x_defs": {},
         "deps": getattr(attr, "deps", []),
         "gc_goopts": getattr(attr, "gc_goopts", []),
-        "runfiles": go._ctx.runfiles(collect_data = True),
+        "runfiles": _collect_runfiles(go, getattr(attr, "data", []), getattr(attr, "deps", [])),
         "cgo_archives": [],
         "cgo_deps": [],
         "cgo_exports": [],
@@ -167,6 +167,17 @@ def _library_to_source(go, attr, library, coverage_instrumented):
     if library.resolve:
         library.resolve(go, attr, source, _merge_embed)
     return GoSource(**source)
+
+def _collect_runfiles(go, data, deps):
+    """Builds a set of runfiles from the deps and data attributes. srcs and
+    their runfiles are not included."""
+    files = depset(transitive = [t[DefaultInfo].files for t in data])
+    runfiles = go._ctx.runfiles(transitive_files = files)
+    for t in data:
+        runfiles = runfiles.merge(t[DefaultInfo].data_runfiles)
+    for t in deps:
+        runfiles = runfiles.merge(get_source(t).runfiles)
+    return runfiles
 
 def _infer_importpath(ctx):
     DEFAULT_LIB = "go_default_library"
